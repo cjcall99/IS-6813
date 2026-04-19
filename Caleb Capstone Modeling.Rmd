@@ -1,0 +1,367 @@
+---
+title: "Modeling"
+author: "Caleb Call"
+date: "March 20, 2026"
+output: 
+  html_document: 
+    toc: true
+---
+
+#EDA
+# Introduction
+
+## Business Problem
+
+MasterControl offers enterprise software to life sciences companies through two primary product families: Qx, which supports quality management, and Mx, which supports manufacturing operations. While Qx is an established product with strong market adoption and a lead progression rate of 19.7%, Mx has not achieved comparable performance. Despite being strategically important to MasterControl’s growth, Mx currently shows a lower progression rate of 12.7%, indicating a meaningful performance gap between the two offerings.
+
+At present, MasterControl does not have sufficient clarity on why Mx underperforms or how its sales and marketing efforts should be adjusted to improve results. The company lacks a clear understanding of which types of organizations are the best fit for Mx, which industries and manufacturing models are most likely to convert, and which roles within those organizations are the true decision-makers for manufacturing solutions. As a result, Mx is often marketed to a broad set of accounts, including non-manufacturing and service-oriented organizations that may have limited need for manufacturing-focused software, reducing sales efficiency.
+
+In addition, the buyer profiles that perform well for Qx do not necessarily translate to Mx. Differences in product purpose mean that quality-focused personas may not be the most effective entry point for manufacturing solutions. However, MasterControl currently lacks a clearly defined Ideal Customer Profile (ICP) for Mx that distinguishes it from Qx. This limits the company’s ability to prioritize the right accounts, engage the right stakeholders, and tailor outreach strategies for each product. Without this clarity, opportunities to strengthen Mx adoption and identify accounts suitable for both Qx and Mx are likely being missed.
+
+## Benefit of a Solution
+
+MasterControl needs a data-driven framework to improve their underperforming Mx product line (currently 12.7% conversion vs. ~18% company baseline) and optimize their outbound prospecting strategy. By implementing reproducible lead classification and segmentation recommendations, MasterControl can increase Mx conversion rates and substantially improve SDR productivity by focusing on high-propensity segments. The solution will provide automated title classification to standardize thousands of unique job title variations, segment prioritization that balances conversion rate with market opportunity (company size and volume), and actionable playbooks specifying which industries, company types, and buyer personas to target for scalable outbound growth.
+
+## Success Metrics
+
+The primary metric for success in this analysis is lead progression, defined as the percentage of qualified sales leads that advance to the next sales stage. Conversion performance will be evaluated across accounts, job titles, company size, and product lines to identify actionable targeting recommendations. The analysis will be considered successful if it identifies leads that outperform the current Mx conversion rate of 12.7%.
+
+## Scope
+
+The scope of this analysis focuses on evaluating lead progression for Mx accounts to identify opportunities to improve conversion performance. While the primary emphasis is on the Mx product, the analysis will also include limited exploration of Qx performance to provide context and identify potential cross-sell opportunities. The analysis is centered on understanding factors that influence movement to the next sales stage and does not include revenue forecasting, deal valuation, or downstream sales outcome analysis.
+
+## Purpose and Questions that will be Explored
+
+The purpose of this EDA is to better understand the data that has been provided by MasterControl so that good recommendations can be offered to them. Some questions that we will explore are:  
+Q1. What data has been given and what variables should be focused on?  
+Q2. How much missing data is there and are there other variables that we can use to compensate for some missing data?  
+Q3. What data can be better understood through a graph or table?  
+Q4. Do different job titles provide insight into increases in progression for either product?
+
+# Exploration
+
+```{r}
+# Load Packages
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+```
+
+```{r}
+# Load Data
+MasterControl_Data <- read.csv(file = "Mastercontrol QAL Performance.csv", stringsAsFactors = FALSE)
+
+# Column names and data types
+str(MasterControl_Data)
+
+# Percent of answers for target variable
+round(prop.table(table(MasterControl_Data$next_stage__c)) * 100, 2)
+
+# Creating a column to indicate if the individual progressed or not
+MasterControl_Data$progressed <- ifelse(
+  MasterControl_Data$next_stage__c %in% c("SQL", "SQO", "Won"),
+  "Progressed",
+  "Not Progressed"
+)
+
+# Another Percent table for the target variable
+round(prop.table(table(MasterControl_Data$progressed)) * 100, 2)
+
+# Checking progression percentages between products
+round(prop.table(table(MasterControl_Data$solution_rollup, MasterControl_Data$progressed), margin = 1)[, "Progressed"] * 100, 2)
+```
+
+All of the columns are chr variables. I decided to add a column that indicates if that purchaser progressed or not. When we dive into understanding the target variable we see that 17.95% of the individuals progressed. When we break down conversion percentages for each product we see that Qx conversion rate is 19.73% while Mx is only 12.66%. These numbers are slightly different than what we got in the informational packet from MasterControl but still paint the same picture.
+
+```{r}
+# barplot of progression per product
+barplot(round(prop.table(table(MasterControl_Data$solution_rollup, MasterControl_Data$progressed), 1)[, "Progressed"] * 100, 1),
+        main = "Percentage Progressed by Product",
+        ylab = "Progression %",
+        col = "steelblue",
+        las = 2)  # rotate x-axis labels
+```
+
+This plot helps to visualize the progression percentage and better see that the Mx product is lacking.
+
+## Missing Data
+
+```{r}
+# Replacing missing data with Unknown
+MasterControl_Data[is.na(MasterControl_Data)] <- "Unknown"
+
+# Checking if that worked
+sum(is.na(MasterControl_Data))
+```
+
+We have replaced all the missing values with Unknown so that we can assign those values with a variable that we can measure. We don't know the reasons for this missing data, but we can see if there are connections with this missing data with other progression trends.
+
+# Exploration Continued
+
+```{r}
+# Define keywords that denote seniority and regex
+pattern <- paste(c("CEO","Chief","President","VP","Director","Manager",
+                   "Senior","Lead","Specialist","Analyst","Coordinator","Engineer"), collapse="|")
+
+# Filter rows with matching titles
+filtered_data <- MasterControl_Data[grepl(pattern, MasterControl_Data$contact.lead.title, ignore.case=TRUE), ]
+
+# Calculate progression % per product
+round(tapply(filtered_data$progressed == "Progressed", filtered_data$solution_rollup, mean) * 100, 2)
+```
+This shows us the when the contact has a senior title the Qx progression rate increased from 19.73% to 24.92%, which is a 5% rise. Unfortunately the Mx progression rate only increased from 12.66% to 14.32% which is less than a 2% rise. Next we'll check to see if Functional Area job titles perform better.
+
+```{r}
+# Define keywords that denote functional roles and regex
+pattern_functional <- paste(c("Quality", "Regulatory", "Operations", "Manufacturing", "Production", "IT", "Systems",
+"Technology", "R&D", "Engineering", "Compliance"), collapse="|")
+
+# Filter rows with matching titles
+filtered_data_functional <- MasterControl_Data[grepl(pattern_functional, MasterControl_Data$contact.lead.title, ignore.case=TRUE), ]
+
+# Calculate progression % per product
+round(tapply(filtered_data_functional$progressed == "Progressed", filtered_data_functional$solution_rollup, mean) * 100, 2)
+```
+When we use the job titles that include functional roles that MasterControl provided we see a greater increase in the Qx product, which has a progression rate up to 26.38% now. The Mx progression rate is only 13.35% which is less than a 1% rise from the baseline. I don't see any initial trends with these titles as a whole that MasterControl provided.
+
+```{r}
+# Creating a new dataset with just Mx
+Mx_Data <- MasterControl_Data[MasterControl_Data$solution_rollup == "Mx", ]
+```
+
+I created a separate dataset with just Mx so that we can better understand those trends.
+
+```{r}
+# Looking at what they manufacture and who progressed the best
+round(head(sort(tapply(Mx_Data$progressed == "Progressed", Mx_Data$acct.primary.site.function, mean, na.rm = TRUE) * 100, decreasing = TRUE), 10), 2)
+```
+
+Cytokines / Growth factors had the best progression rate for what they produced by a good margin. Potentially target that industry.
+
+```{r}
+# Looking at the business model and who progressed the best
+round(head(sort(tapply(Mx_Data$progressed == "Progressed", Mx_Data$acct.manufacturing.model, mean, na.rm = TRUE) * 100, decreasing = TRUE), 10), 2)
+```
+
+The 503A Business model had the best progression rate, but there is no description of what that means in the variable explanations, so we will also list Consumer Packaged Goods and Original Equiptment manufacturing as good options to target.
+
+```{r}
+# Looking at the Priority and who progressed the best
+round(head(sort(tapply(Mx_Data$progressed == "Progressed", Mx_Data$Priority, mean, na.rm = TRUE) * 100, decreasing = TRUE), 10), 2)
+```
+
+This shows us that the P1 - Website Pricing has the best progression rate by a substantial amount and could be potentially prioritized.
+
+```{r}
+# Looking at the marketing channel and who progressed the best
+round(head(sort(tapply(Mx_Data$progressed == "Progressed", Mx_Data$last.tactic.campaign.channel, mean, na.rm = TRUE) * 100, decreasing = TRUE), 10), 2)
+```
+
+The different marketing channels didn't have 1 that produced a great progression percentage for the Mx product. The leader was SEO.
+
+# Results
+
+At first glance, there aren't any strong differences in groups of job position titles that can be targeted that would lead to higher conversion rates for the Mx product. Both Seniority and functional titles led to substantially increased conversion rates for the Qx but not the Mx. The missing values were marked as Unknown so that we could still use the as potentially trend fitting. While searching through the other columns, there were certain categories that produced higher progression rates that were mentioned previously in the file. We can make some recommendations for each of those. There is more research and model building that will need to occur to make connections and suggestions for people with certain job titles that should be targeted with the Mx product.
+
+# Introduction
+
+## Business Problem
+
+MasterControl offers enterprise software to life sciences companies through two primary product families: Qx, which supports quality management, and Mx, which supports manufacturing operations. While Qx is an established product with strong market adoption and a lead progression rate of 19.7%, Mx has not achieved comparable performance. Despite being strategically important to MasterControl’s growth, Mx currently shows a lower progression rate of 12.7%, indicating a meaningful performance gap between the two offerings.
+
+At present, MasterControl does not have sufficient clarity on why Mx underperforms or how its sales and marketing efforts should be adjusted to improve results. The company lacks a clear understanding of which types of organizations are the best fit for Mx, which industries and manufacturing models are most likely to convert, and which roles within those organizations are the true decision-makers for manufacturing solutions. As a result, Mx is often marketed to a broad set of accounts, including non-manufacturing and service-oriented organizations that may have limited need for manufacturing-focused software, reducing sales efficiency.
+
+In addition, the buyer profiles that perform well for Qx do not necessarily translate to Mx. Differences in product purpose mean that quality-focused personas may not be the most effective entry point for manufacturing solutions. However, MasterControl currently lacks a clearly defined Ideal Customer Profile (ICP) for Mx that distinguishes it from Qx. This limits the company’s ability to prioritize the right accounts, engage the right stakeholders, and tailor outreach strategies for each product. Without this clarity, opportunities to strengthen Mx adoption and identify accounts suitable for both Qx and Mx are likely being missed.
+
+## Baseline Comparison
+
+The baseline target for what we want to be better than is the 12.7% progression rate that we currently see with Mx.
+
+## Preparing Data for Modeling
+
+```{r}
+# Remove rows that have blank values for the target variable
+No_Missing_Target <- MasterControl_Data[MasterControl_Data$next_stage__c != "", ]
+```
+
+I created this dateframe which removed missing target variable because those rows won't be useful in building a model.
+
+```{r}
+# Filter for just Mx
+NMT_Mx_Data <- No_Missing_Target[No_Missing_Target$solution_rollup == "Mx", ]
+
+# Sanity checks
+table(NMT_Mx_Data$progressed)
+prop.table(table(NMT_Mx_Data$progressed))
+table(NMT_Mx_Data$next_stage__c)
+```
+
+This is an updated dataframe for just Mx but removing rows with missing target variables. The dataframe looks good for modeling now.
+
+```{r}
+# Changing categorical vars to factors
+NMT_Mx_Data$acct_target_industry <- as.factor(NMT_Mx_Data$acct.target.industry)
+NMT_Mx_Data$acct_manufacturing_model <- as.factor(NMT_Mx_Data$acct.manufacturing.model)
+NMT_Mx_Data$acct_primary_site_function <- as.factor(NMT_Mx_Data$acct.primary.site.function)
+NMT_Mx_Data$acct_tier_rollup <- as.factor(NMT_Mx_Data$acct.tier.rollup)
+NMT_Mx_Data$acct_territory_rollup <- as.factor(NMT_Mx_Data$acct.territory.rollup)
+NMT_Mx_Data$Priority <- as.factor(NMT_Mx_Data$Priority)
+NMT_Mx_Data$last_tactic_campaign_channel <- as.factor(NMT_Mx_Data$last.tactic.campaign.channel)
+NMT_Mx_Data$progressed <- as.factor(NMT_Mx_Data$progressed)
+```
+
+Change variables to factors so we can run our models.
+
+## Split data into Train/Test
+```{r}
+# Split data
+set.seed(123)
+train_index <- sample(1:nrow(NMT_Mx_Data), 0.7 * nrow(NMT_Mx_Data))
+train <- NMT_Mx_Data[train_index, ]
+test <- NMT_Mx_Data[-train_index, ]
+
+# Align factors between train and test
+factor_vars <- c("acct_target_industry",
+                 "acct_manufacturing_model",
+                 "acct_primary_site_function",
+                 "acct_tier_rollup",
+                 "acct_territory_rollup",
+                 "Priority",
+                 "last_tactic_campaign_channel")
+
+for (var in factor_vars) {
+  # Replace any NA or unknown strings with "Unknown" in **train and test**
+  train[[var]][is.na(train[[var]]) | train[[var]] == "Unknown"] <- "Unknown"
+  test[[var]][is.na(test[[var]]) | test[[var]] == "Unknown"] <- "Unknown"
+  
+  # Make train a factor and ensure "Unknown" is a level
+  train[[var]] <- factor(train[[var]])
+  if (!"Unknown" %in% levels(train[[var]])) {
+    levels(train[[var]]) <- c(levels(train[[var]]), "Unknown")
+  }
+  
+  # Convert test to factor with the same levels as train
+  test[[var]] <- factor(test[[var]], levels = levels(train[[var]]))
+  
+  # Replace any remaining unseen test levels with "Unknown"
+  test[[var]][is.na(test[[var]])] <- "Unknown"
+}
+```
+
+Split the data into train and test so that we can make sure that we don't overfit the model.
+
+## Logistic Regression
+
+```{r}
+# Prep dataset
+
+# Copy dataset so original stays intact
+data <- NMT_Mx_Data
+
+# List of categorical variables
+factor_vars <- c("acct_target_industry",
+                 "acct_manufacturing_model",
+                 "acct_primary_site_function",
+                 "acct_tier_rollup",
+                 "acct_territory_rollup",
+                 "Priority",
+                 "last_tactic_campaign_channel")
+
+# Replace NAs with "Unknown" for all factor variables
+for (var in factor_vars) {
+  data[[var]][is.na(data[[var]])] <- "Unknown"
+}
+
+# Collapse rare categories in acct_primary_site_function to "Other"
+top_levels <- names(sort(table(data$acct_primary_site_function), decreasing = TRUE)[1:10])
+data$acct_primary_site_function <- ifelse(
+  data$acct_primary_site_function %in% top_levels,
+  data$acct_primary_site_function,
+  "Other"
+)
+
+# Ensure factor type
+for (var in factor_vars) {
+  data[[var]] <- factor(data[[var]])
+}
+```
+
+```{r}
+# Split data into train/test
+
+set.seed(123)
+train_index <- sample(1:nrow(data), 0.7 * nrow(data))
+train <- data[train_index, ]
+test <- data[-train_index, ]
+
+# Align factor levels between train and test
+for (var in factor_vars) {
+  test[[var]] <- factor(test[[var]], levels = levels(train[[var]]))
+}
+```
+
+```{r}
+# Fit logistic regression
+
+Log_model <- glm(progressed ~ acct_target_industry +
+                   acct_manufacturing_model +
+                   acct_primary_site_function +
+                   acct_tier_rollup +
+                   acct_territory_rollup +
+                   Priority +
+                   last_tactic_campaign_channel,
+                 data = train,
+                 family = binomial)
+```
+
+```{r}
+# Predict on test
+
+pred_probs <- predict(Log_model, newdata = test, type = "response")
+pred_class <- ifelse(pred_probs > 0.5, 1, 0)
+```
+
+```{r}
+# Confusion table & accuracy
+
+conf_table <- table(Predicted = pred_class, Actual = test$progressed)
+conf_table
+
+accuracy <- sum(diag(conf_table)) / sum(conf_table)
+accuracy
+```
+## Baseline Accuracy
+```{r}
+# Baseline Accuracy: Predict majority class
+majority_class <- names(sort(table(train$progressed), decreasing = TRUE))[1]
+baseline_pred <- rep(majority_class, nrow(test))
+baseline_conf <- table(Predicted = baseline_pred, Actual = test$progressed)
+baseline_accuracy <- sum(diag(baseline_conf)) / sum(baseline_conf)
+
+# View results
+baseline_conf
+baseline_accuracy
+```
+The baseline accuracy using the majority class is 89%.
+
+## AUC for Log model
+```{r}
+# Make sure the target is a factor with 2 levels
+test$progressed <- factor(test$progressed, levels = c("Not Progressed", "Progressed"))
+
+# Predict probabilities from your existing model
+pred_probs <- predict(Log_model, newdata = test, type = "response")
+
+# Load pROC package
+library(pROC)
+
+# Compute ROC object
+roc_obj <- roc(response = test$progressed, predictor = pred_probs)
+
+# Extract AUC
+auc_value <- auc(roc_obj)
+auc_value
+```
+
+# Conclusion 
+Our original logistic model only has an accuracy of 87.67% while using the majority class we have an accuracy rating of 88.98%. The AUC however improved drastically from .7838 to 0.5. Our logistic model produced a greater ability to predict the minority class and we would recommend using this model to predict which individuals to focus on for the Mx product. 
